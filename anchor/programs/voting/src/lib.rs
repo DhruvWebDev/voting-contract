@@ -2,7 +2,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("DbvNMXG4yXJTkYh96taB9f8Mp2jCUoBnkACssFjv9Vgp");
+declare_id!("47K2qnDgnUwGL7tH2ysCn4JUZLz4H12VGvZzMsUQY9LU");
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 
@@ -12,23 +12,22 @@ pub mod voting {
 
     pub fn initialize_poll(
         ctx: Context<InitializePoll>,
-        _poll_id: u64,
+        poll_id: u64,
         description: String,
         poll_start: u64,
         poll_end: u64,
     ) -> Result<()> {
         if description.len() > 200 {
             msg!("The description exceeds the word limit");
-            return err!(ErrorCode::ExceedsWordLimit);
+            return Err(ErrorCode::ExceedsWordLimit.into());
         }
 
         let poll = &mut ctx.accounts.poll;
-        poll.poll_id = _poll_id;
+        poll.poll_id = poll_id;
         poll.description = description;
         poll.poll_start = poll_start;
         poll.poll_end = poll_end;
         poll.candidate_amount = 0;
-        poll.candidate_list = Vec::new();
 
         Ok(())
     }
@@ -37,25 +36,22 @@ pub mod voting {
         ctx: Context<InitializeCandidate>,
         candidate_name: String,
         image_url: String,
-        _poll_id: u64,
+        poll_id: u64,
     ) -> Result<()> {
         if candidate_name.len() > 32 || image_url.len() > 128 {
             msg!("Word Limit Exceeded");
-            return err!(ErrorCode::ExceedsWordLimit);
+            return Err(ErrorCode::ExceedsWordLimit.into());
         }
 
         let poll: &mut Account<Poll> = &mut ctx.accounts.poll;
 
         require!(
-            !poll
-                .candidate_list
-                .iter()
-                .any(|c| c.candidate_name == candidate_name),
+            !poll.candidate_list.iter().any(|c| c.candidate_name == candidate_name),
             ErrorCode::CandidateAlreadyExists
         );
 
         let new_candidate = CandidateDetail {
-            candidate_name: candidate_name.clone(),
+            candidate_name,
             candidate_votes: 0,
         };
 
@@ -70,7 +66,7 @@ pub mod voting {
         Ok(())
     }
 
-    pub fn vote(ctx: Context<Vote>, candidate_name: String, _poll_id: u64) -> Result<()> {
+    pub fn vote(ctx: Context<Vote>, candidate_name: String, poll_id: u64) -> Result<()> {
         let poll: &Account<Poll> = &ctx.accounts.poll;
 
         if !poll
@@ -79,14 +75,14 @@ pub mod voting {
             .any(|c| c.candidate_name == candidate_name)
         {
             msg!("Candidate not found.");
-            return err!(ErrorCode::UnauthorisedCandidate);
+            return Err(ErrorCode::UnauthorisedCandidate.into());
         }
 
         let is_cast = &mut ctx.accounts.is_cast_vote;
 
         if is_cast.vote {
             msg!("Restricted: one-vote-per-voter rule.");
-            return err!(ErrorCode::AlreadyVoted);
+            return Err(ErrorCode::AlreadyVoted.into());
         }
 
         is_cast.vote = true;
@@ -121,7 +117,7 @@ pub struct Vote<'info> {
     pub candidate: Account<'info, Candidate>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         space = ANCHOR_DISCRIMINATOR_SIZE + IsCast::INIT_SPACE,
         seeds = [poll_id.to_le_bytes().as_ref(), signer.key().as_ref()],
@@ -145,10 +141,10 @@ pub struct InitializeCandidate<'info> {
     pub poll: Account<'info, Poll>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         space = ANCHOR_DISCRIMINATOR_SIZE + Candidate::INIT_SPACE,
-        seeds = [poll_id.to_le_bytes().as_ref(), candidate_name.as_bytes()],
+        seeds = [poll_id.to_le_bytes().as_ref(), candidate_name.as_ref()],
         bump
     )]
     pub candidate: Account<'info, Candidate>,
@@ -163,7 +159,7 @@ pub struct InitializePoll<'info> {
     pub signer: Signer<'info>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
         space = ANCHOR_DISCRIMINATOR_SIZE + Poll::INIT_SPACE,
         seeds = [poll_id.to_le_bytes().as_ref()],
@@ -175,7 +171,6 @@ pub struct InitializePoll<'info> {
 }
 
 #[account]
-#[derive(InitSpace)]
 pub struct Candidate {
     #[max_len(32)]
     pub candidate_name: String,
@@ -185,7 +180,6 @@ pub struct Candidate {
 }
 
 #[account]
-#[derive(InitSpace)]
 pub struct Poll {
     pub poll_id: u64,
     #[max_len(200)]
@@ -193,23 +187,21 @@ pub struct Poll {
     pub poll_start: u64,
     pub poll_end: u64,
     pub candidate_amount: u64,
-    #[max_len(32)]
     pub candidate_list: Vec<CandidateDetail>,
 }
 
 #[account]
-#[derive(InitSpace)]
 pub struct IsCast {
     pub vote: bool,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, InitSpace)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct CandidateDetail {
     #[max_len(128)]
     pub candidate_name: String,
     pub candidate_votes: u64,
 }
-//Custom error codes
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("You have already voted in this poll.")]

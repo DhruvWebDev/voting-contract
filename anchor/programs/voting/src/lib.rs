@@ -6,6 +6,7 @@ declare_id!("DbvNMXG4yXJTkYh96taB9f8Mp2jCUoBnkACssFjv9Vgp");
 
 pub const ANCHOR_DISCRIMINATOR_SIZE: usize = 8;
 
+
 #[program]
 pub mod voting {
     use super::*;
